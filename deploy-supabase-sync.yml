@@ -1,0 +1,55 @@
+name: Deploy Studio Desk TikTok sync backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/deploy-supabase-sync.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SOCIFLUX_API_KEY: ${{ secrets.SOCIFLUX_API_KEY }}
+      SYNC_CRON_SECRET: ${{ secrets.SYNC_CRON_SECRET }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify required GitHub secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SOCIFLUX_API_KEY SYNC_CRON_SECRET; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Missing GitHub Actions repository secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Store private API keys as Supabase Function secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase secrets set --project-ref "$SUPABASE_PROJECT_ID" \
+            "SOCIFLUX_API_KEY=$SOCIFLUX_API_KEY" \
+            "SYNC_CRON_SECRET=$SYNC_CRON_SECRET"
+
+      - name: Deploy Supabase Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api
